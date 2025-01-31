@@ -10,42 +10,34 @@ import seaborn as sns
 import streamlit as st
 
 class AirQualityPredictor:
-    def __init__(self, data_sources=None):
-        """
-        Initialize the Air Quality Prediction project
-        
-        Args:
-            data_sources (list): List of API/data source URLs
-        """
-        self.data_sources = data_sources or [
-            'https://openaq.org/api/v2/measurements',
-            'https://api.openweathermap.org/data/2.5/air_pollution'
-        ]
-        self.raw_data = None
+    def __init__(self):
+        """Initialize the Air Quality Prediction project with simulated data"""
+        self.raw_data = self._generate_sample_data()
         self.processed_data = None
         self.model = None
         
-    def collect_data(self):
+    def _generate_sample_data(self, n_samples=1000):
         """
-        Collect data from multiple sources
+        Generate synthetic air quality dataset
+        
+        Args:
+            n_samples (int): Number of data points to generate
         
         Returns:
-            pd.DataFrame: Collected air quality and weather data
+            pd.DataFrame: Simulated air quality data
         """
-        dataframes = []
-        
-        # Simulated data collection (replace with actual API calls)
-        for source in self.data_sources:
-            try:
-                # Placeholder for actual API request
-                response = requests.get(source)
-                df = pd.DataFrame(response.json().get('results', []))
-                dataframes.append(df)
-            except Exception as e:
-                print(f"Error collecting data from {source}: {e}")
-        
-        self.raw_data = pd.concat(dataframes, ignore_index=True)
-        return self.raw_data
+        np.random.seed(42)
+        data = {
+            'temperature': np.random.uniform(0, 40, n_samples),
+            'humidity': np.random.uniform(20, 90, n_samples),
+            'wind_speed': np.random.uniform(0, 20, n_samples),
+            'pollutant_levels': np.random.uniform(0, 500, n_samples),
+            'latitude': np.random.uniform(-90, 90, n_samples),
+            'longitude': np.random.uniform(-180, 180, n_samples),
+            'datetime': pd.date_range(start='2023-01-01', periods=n_samples),
+            'air_quality_index': np.random.uniform(0, 500, n_samples)
+        }
+        return pd.DataFrame(data)
     
     def preprocess_data(self):
         """
@@ -54,23 +46,16 @@ class AirQualityPredictor:
         Returns:
             pd.DataFrame: Processed and cleaned dataset
         """
+        # Ensure we have data
         if self.raw_data is None:
-            self.collect_data()
-        
-        # Handle missing values
-        self.processed_data = self.raw_data.dropna()
+            self.raw_data = self._generate_sample_data()
         
         # Feature engineering
-        self.processed_data['datetime'] = pd.to_datetime(self.processed_data['datetime'])
+        self.processed_data = self.raw_data.copy()
         self.processed_data['hour'] = self.processed_data['datetime'].dt.hour
         self.processed_data['month'] = self.processed_data['datetime'].dt.month
         
-        # Select relevant features
-        features = ['temperature', 'humidity', 'wind_speed', 
-                    'pollutant_levels', 'hour', 'month', 'latitude', 'longitude']
-        target = 'air_quality_index'
-        
-        return self.processed_data[features + [target]]
+        return self.processed_data
     
     def exploratory_analysis(self):
         """
@@ -79,15 +64,16 @@ class AirQualityPredictor:
         Returns:
             dict: Analysis visualizations and insights
         """
-        # Correlation heatmap
+        # Correlation analysis
+        correlation_matrix = self.processed_data.select_dtypes(include=[np.number]).corr()
+        
+        # Visualizations
         plt.figure(figsize=(10, 8))
-        correlation_matrix = self.processed_data.corr()
         sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
         plt.title('Feature Correlation Heatmap')
         plt.tight_layout()
         plt.savefig('correlation_heatmap.png')
         
-        # Scatter plot of key features
         plt.figure(figsize=(12, 6))
         plt.scatter(self.processed_data['temperature'], 
                     self.processed_data['air_quality_index'])
@@ -106,14 +92,14 @@ class AirQualityPredictor:
         """
         Train machine learning model for AQI prediction
         
-        Args:
-            test_size (float): Proportion of test dataset
-            random_state (int): Seed for reproducibility
-        
         Returns:
             dict: Model performance metrics
         """
-        X = self.processed_data.drop('air_quality_index', axis=1)
+        # Select features
+        features = ['temperature', 'humidity', 'wind_speed', 
+                    'pollutant_levels', 'hour', 'month', 
+                    'latitude', 'longitude']
+        X = self.processed_data[features]
         y = self.processed_data['air_quality_index']
         
         # Split data
@@ -146,18 +132,34 @@ class AirQualityPredictor:
         st.title('Air Quality Index Predictor')
         
         # Input features
-        temperature = st.slider('Temperature', min_value=0.0, max_value=50.0, value=25.0)
+        temperature = st.slider('Temperature (°C)', min_value=0.0, max_value=50.0, value=25.0)
         humidity = st.slider('Humidity (%)', min_value=0, max_value=100, value=50)
+        wind_speed = st.slider('Wind Speed (m/s)', min_value=0.0, max_value=20.0, value=5.0)
         
         # Prediction
         if st.button('Predict AQI'):
-            prediction = self.model.predict([[temperature, humidity]])
+            # Prepare input for prediction
+            input_data = np.array([[
+                temperature, humidity, wind_speed, 
+                200, 12, 6,  # default values for other features
+                0, 0  # default lat/long
+            ]])
+            
+            # Scale input
+            scaler = StandardScaler()
+            scaler.fit(self.processed_data[['temperature', 'humidity', 'wind_speed', 
+                                            'pollutant_levels', 'hour', 'month', 
+                                            'latitude', 'longitude']])
+            input_scaled = scaler.transform(input_data)
+            
+            # Predict
+            prediction = self.model.predict(input_scaled)
             st.write(f'Predicted Air Quality Index: {prediction[0]:.2f}')
 
-# Example usage
-predictor = AirQualityPredictor()
-predictor.collect_data()
-predictor.preprocess_data()
-predictor.exploratory_analysis()
-model_performance = predictor.train_model()
-print("Model Performance:", model_performance)
+# Uncomment for standalone script execution
+if __name__ == '__main__':
+    predictor = AirQualityPredictor()
+    predictor.preprocess_data()
+    predictor.exploratory_analysis()
+    model_performance = predictor.train_model()
+    print("Model Performance:", model_performance)
