@@ -1,3 +1,4 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 import logging
@@ -7,46 +8,13 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
-import streamlit as st
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s: %(message)s',
-    handlers=[
-        logging.FileHandler('air_quality_prediction.log'),
-        logging.StreamHandler()
-    ]
-)
 
 class AirQualityPredictor:
     def __init__(self):
-        """Initialize the Air Quality Prediction project with simulated data"""
-        self.logger = logging.getLogger(__name__)
         self.raw_data = self._generate_sample_data()
         self.processed_data = None
         self.model = None
-        
-        # Log initialization
-        self._log_process_start()
-    
-    def _log_process_start(self):
-        """Log project initialization details"""
-        self.logger.info("Air Quality Prediction Project Initialized")
-        self.logger.info(f"Sample Data Generated: {len(self.raw_data)} records")
-    
-    def _log_process_complete(self, stage, details=None):
-        """
-        Log completion of a processing stage
-        
-        Args:
-            stage (str): Name of the completed stage
-            details (dict, optional): Additional details to log
-        """
-        self.logger.info(f"{stage} Processing Completed")
-        if details:
-            for key, value in details.items():
-                self.logger.info(f"{key}: {value}")
+        self.model_performance = None
     
     def _generate_sample_data(self, n_samples=1000):
         """Generate synthetic air quality dataset"""
@@ -65,29 +33,13 @@ class AirQualityPredictor:
     
     def preprocess_data(self):
         """Clean and prepare data for modeling"""
-        self.logger.info("Starting Data Preprocessing")
-        
-        # Ensure we have data
-        if self.raw_data is None:
-            self.raw_data = self._generate_sample_data()
-        
-        # Feature engineering
         self.processed_data = self.raw_data.copy()
         self.processed_data['hour'] = self.processed_data['datetime'].dt.hour
         self.processed_data['month'] = self.processed_data['datetime'].dt.month
-        
-        # Log preprocessing details
-        self._log_process_complete('Preprocessing', {
-            'Total Records': len(self.processed_data),
-            'Features Added': ['hour', 'month']
-        })
-        
         return self.processed_data
     
     def exploratory_analysis(self):
         """Perform exploratory data analysis"""
-        self.logger.info("Starting Exploratory Data Analysis")
-        
         # Correlation analysis
         correlation_matrix = self.processed_data.select_dtypes(include=[np.number]).corr()
         
@@ -106,22 +58,10 @@ class AirQualityPredictor:
         plt.title('Temperature vs Air Quality Index')
         plt.savefig('temperature_vs_aqi.png')
         
-        # Log analysis completion
-        self._log_process_complete('Exploratory Analysis', {
-            'Correlation Matrix Shape': correlation_matrix.shape,
-            'Visualization Files': ['correlation_heatmap.png', 'temperature_vs_aqi.png']
-        })
-        
-        return {
-            'correlation_matrix': correlation_matrix,
-            'heatmap_file': 'correlation_heatmap.png',
-            'scatter_plot_file': 'temperature_vs_aqi.png'
-        }
+        return correlation_matrix
     
     def train_model(self, test_size=0.2, random_state=42):
         """Train machine learning model for AQI prediction"""
-        self.logger.info("Starting Model Training")
-        
         # Select features
         features = ['temperature', 'humidity', 'wind_speed', 
                     'pollutant_levels', 'hour', 'month', 
@@ -145,29 +85,53 @@ class AirQualityPredictor:
         
         # Predictions and evaluation
         y_pred = self.model.predict(X_test_scaled)
-        performance = {
+        self.model_performance = {
             'mae': mean_absolute_error(y_test, y_pred),
             'rmse': np.sqrt(mean_squared_error(y_test, y_pred)),
             'r2_score': r2_score(y_test, y_pred)
         }
         
-        # Log model training details
-        self._log_process_complete('Model Training', {
-            'Model Type': 'Random Forest',
-            'Training Samples': len(X_train),
-            'Test Samples': len(X_test),
-            **performance
-        })
-        
-        return performance
+        return self.model_performance
 
-# Execution logging
+def main():
+    st.title('Air Quality Prediction Dashboard')
+    
+    # Initialize predictor
+    predictor = AirQualityPredictor()
+    
+    # Display processing stages
+    st.header('Project Processing Stages')
+    
+    # Data Preprocessing
+    st.subheader('1. Data Preprocessing')
+    processed_data = predictor.preprocess_data()
+    st.write(f'Total Records: {len(processed_data)}')
+    st.write(f'Features Added: hour, month')
+    
+    # Exploratory Analysis
+    st.subheader('2. Exploratory Data Analysis')
+    correlation_matrix = predictor.exploratory_analysis()
+    st.write('Correlation Matrix Shape:', correlation_matrix.shape)
+    
+    # Model Training
+    st.subheader('3. Model Training')
+    model_performance = predictor.train_model()
+    
+    # Display Model Performance
+    st.write('Model Performance Metrics:')
+    st.write(f"Mean Absolute Error (MAE): {model_performance['mae']:.2f}")
+    st.write(f"Root Mean Squared Error (RMSE): {model_performance['rmse']:.2f}")
+    st.write(f"R² Score: {model_performance['r2_score']:.2f}")
+    
+    # Visualization Display
+    st.subheader('Visualizations')
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.image('correlation_heatmap.png', caption='Correlation Heatmap')
+    
+    with col2:
+        st.image('temperature_vs_aqi.png', caption='Temperature vs Air Quality Index')
+
 if __name__ == '__main__':
-    try:
-        predictor = AirQualityPredictor()
-        predictor.preprocess_data()
-        predictor.exploratory_analysis()
-        model_performance = predictor.train_model()
-        logging.info("Air Quality Prediction Project Completed Successfully")
-    except Exception as e:
-        logging.error(f"Project Execution Failed: {e}", exc_info=True)
+    main()
