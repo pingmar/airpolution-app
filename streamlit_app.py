@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import requests
+import logging
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
@@ -9,23 +9,47 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s: %(message)s',
+    handlers=[
+        logging.FileHandler('air_quality_prediction.log'),
+        logging.StreamHandler()
+    ]
+)
+
 class AirQualityPredictor:
     def __init__(self):
         """Initialize the Air Quality Prediction project with simulated data"""
+        self.logger = logging.getLogger(__name__)
         self.raw_data = self._generate_sample_data()
         self.processed_data = None
         self.model = None
         
-    def _generate_sample_data(self, n_samples=1000):
+        # Log initialization
+        self._log_process_start()
+    
+    def _log_process_start(self):
+        """Log project initialization details"""
+        self.logger.info("Air Quality Prediction Project Initialized")
+        self.logger.info(f"Sample Data Generated: {len(self.raw_data)} records")
+    
+    def _log_process_complete(self, stage, details=None):
         """
-        Generate synthetic air quality dataset
+        Log completion of a processing stage
         
         Args:
-            n_samples (int): Number of data points to generate
-        
-        Returns:
-            pd.DataFrame: Simulated air quality data
+            stage (str): Name of the completed stage
+            details (dict, optional): Additional details to log
         """
+        self.logger.info(f"{stage} Processing Completed")
+        if details:
+            for key, value in details.items():
+                self.logger.info(f"{key}: {value}")
+    
+    def _generate_sample_data(self, n_samples=1000):
+        """Generate synthetic air quality dataset"""
         np.random.seed(42)
         data = {
             'temperature': np.random.uniform(0, 40, n_samples),
@@ -40,12 +64,9 @@ class AirQualityPredictor:
         return pd.DataFrame(data)
     
     def preprocess_data(self):
-        """
-        Clean and prepare data for modeling
+        """Clean and prepare data for modeling"""
+        self.logger.info("Starting Data Preprocessing")
         
-        Returns:
-            pd.DataFrame: Processed and cleaned dataset
-        """
         # Ensure we have data
         if self.raw_data is None:
             self.raw_data = self._generate_sample_data()
@@ -55,15 +76,18 @@ class AirQualityPredictor:
         self.processed_data['hour'] = self.processed_data['datetime'].dt.hour
         self.processed_data['month'] = self.processed_data['datetime'].dt.month
         
+        # Log preprocessing details
+        self._log_process_complete('Preprocessing', {
+            'Total Records': len(self.processed_data),
+            'Features Added': ['hour', 'month']
+        })
+        
         return self.processed_data
     
     def exploratory_analysis(self):
-        """
-        Perform exploratory data analysis
+        """Perform exploratory data analysis"""
+        self.logger.info("Starting Exploratory Data Analysis")
         
-        Returns:
-            dict: Analysis visualizations and insights
-        """
         # Correlation analysis
         correlation_matrix = self.processed_data.select_dtypes(include=[np.number]).corr()
         
@@ -82,6 +106,12 @@ class AirQualityPredictor:
         plt.title('Temperature vs Air Quality Index')
         plt.savefig('temperature_vs_aqi.png')
         
+        # Log analysis completion
+        self._log_process_complete('Exploratory Analysis', {
+            'Correlation Matrix Shape': correlation_matrix.shape,
+            'Visualization Files': ['correlation_heatmap.png', 'temperature_vs_aqi.png']
+        })
+        
         return {
             'correlation_matrix': correlation_matrix,
             'heatmap_file': 'correlation_heatmap.png',
@@ -89,12 +119,9 @@ class AirQualityPredictor:
         }
     
     def train_model(self, test_size=0.2, random_state=42):
-        """
-        Train machine learning model for AQI prediction
+        """Train machine learning model for AQI prediction"""
+        self.logger.info("Starting Model Training")
         
-        Returns:
-            dict: Model performance metrics
-        """
         # Select features
         features = ['temperature', 'humidity', 'wind_speed', 
                     'pollutant_levels', 'hour', 'month', 
@@ -118,48 +145,29 @@ class AirQualityPredictor:
         
         # Predictions and evaluation
         y_pred = self.model.predict(X_test_scaled)
-        
-        return {
+        performance = {
             'mae': mean_absolute_error(y_test, y_pred),
             'rmse': np.sqrt(mean_squared_error(y_test, y_pred)),
             'r2_score': r2_score(y_test, y_pred)
         }
-    
-    def streamlit_dashboard(self):
-        """
-        Create interactive Streamlit dashboard for AQI predictions
-        """
-        st.title('Air Quality Index Predictor')
         
-        # Input features
-        temperature = st.slider('Temperature (°C)', min_value=0.0, max_value=50.0, value=25.0)
-        humidity = st.slider('Humidity (%)', min_value=0, max_value=100, value=50)
-        wind_speed = st.slider('Wind Speed (m/s)', min_value=0.0, max_value=20.0, value=5.0)
+        # Log model training details
+        self._log_process_complete('Model Training', {
+            'Model Type': 'Random Forest',
+            'Training Samples': len(X_train),
+            'Test Samples': len(X_test),
+            **performance
+        })
         
-        # Prediction
-        if st.button('Predict AQI'):
-            # Prepare input for prediction
-            input_data = np.array([[
-                temperature, humidity, wind_speed, 
-                200, 12, 6,  # default values for other features
-                0, 0  # default lat/long
-            ]])
-            
-            # Scale input
-            scaler = StandardScaler()
-            scaler.fit(self.processed_data[['temperature', 'humidity', 'wind_speed', 
-                                            'pollutant_levels', 'hour', 'month', 
-                                            'latitude', 'longitude']])
-            input_scaled = scaler.transform(input_data)
-            
-            # Predict
-            prediction = self.model.predict(input_scaled)
-            st.write(f'Predicted Air Quality Index: {prediction[0]:.2f}')
+        return performance
 
-# Uncomment for standalone script execution
+# Execution logging
 if __name__ == '__main__':
-    predictor = AirQualityPredictor()
-    predictor.preprocess_data()
-    predictor.exploratory_analysis()
-    model_performance = predictor.train_model()
-    print("Model Performance:", model_performance)
+    try:
+        predictor = AirQualityPredictor()
+        predictor.preprocess_data()
+        predictor.exploratory_analysis()
+        model_performance = predictor.train_model()
+        logging.info("Air Quality Prediction Project Completed Successfully")
+    except Exception as e:
+        logging.error(f"Project Execution Failed: {e}", exc_info=True)
