@@ -7,202 +7,200 @@ from datetime import datetime, timedelta
 import streamlit as st
 import folium
 from streamlit_folium import folium_static
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import StandardScaler
 
-def fetch_air_quality_data(capitals, parameter="pm25", limit=100, filename="air_quality_data.csv"):
+def fetch_locations_by_parameter(parameter_id=2, limit=1000):
     """
-    Fetch air quality data from OpenAQ API for multiple capital cities and store results.
+    Fetch locations that measure a specific parameter (default: PM2.5).
+    
+    Args:
+        parameter_id (int): Parameter ID (2 for PM2.5)
+        limit (int): Number of results per page
     """
-    # Check if data file exists and is less than 1 day old
-    if os.path.exists(filename):
-        file_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(filename))
-        if file_age.days < 1:
-            print("Loading recent data from CSV file...")
-            return pd.read_csv(filename)
+    url = f"https://api.openaq.org/v3/locations"
+    params = {
+        "parameters_id": parameter_id,
+        "limit": limit
+    }
+    headers = {'X-API-Key': st.secrets["AQ_API"]}
     
-    records = []
-    for city in capitals:
-        # Updated API endpoint for v2
-        url = f"https://api.openaq.org/v3/measurements"
-        headers = {'X-API-Key': st.secrets["AQ_API"]}
-        params = {
-            'city': city,
-            'parameter': parameter,
-        }
-        
-        try:
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
-            
-            data = response.json()
-            results = data.get("results", [])
-            
-            for item in results:
-                record = {
-                    "city": item.get("city"),
-                    "country": item.get("country"),
-                    "location": item.get("location"),
-                    "parameter": item.get("parameter"),
-                    "value": item.get("value"),
-                    "unit": item.get("unit"),
-                    "latitude": item.get("coordinates", {}).get("latitude"),
-                    "longitude": item.get("coordinates", {}).get("longitude"),
-                    "date_utc": item.get("date", {}).get("utc"),
-                }
-                if all(v is not None for v in record.values()):
-                    records.append(record)
-                    
-        except requests.exceptions.RequestException as e:
-            st.error(f"Failed to fetch data for {city}: {str(e)}")
-    
-    if not records:
-        st.error("No data was retrieved from the API")
+    try:
+        response = requests.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        return pd.DataFrame(data.get("results", []))
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to fetch locations: {str(e)}")
         return pd.DataFrame()
-    
-    df = pd.DataFrame(records)
-    df['date_utc'] = pd.to_datetime(df['date_utc'])
-    df.to_csv(filename, index=False)
-    return df
 
-def prepare_data_for_prediction(df, city):
-    """Prepare data for prediction model."""
-    city_data = df[df['city'] == city].copy()
-    if city_data.empty:
-        return None, None, None
+def fetch_latest_measurements(parameter_id=2, limit=1000):
+    """
+    Fetch latest measurements for a specific parameter (default: PM2.5).
     
-    city_data = city_data.sort_values('date_utc')
-    city_data['hour'] = city_data['date_utc'].dt.hour
-    city_data['day_of_week'] = city_data['date_utc'].dt.dayofweek
-    city_data['month'] = city_data['date_utc'].dt.month
+    Args:
+        parameter_id (int): Parameter ID (2 for PM2.5)
+        limit (int): Number of results per page
+    """
+    url = f"https://api.openaq.org/v3/parameters/{parameter_id}/latest"
+    params = {"limit": limit}
+    headers = {'X-API-Key': st.secrets["AQ_API"]}
     
-    X = city_data[['hour', 'day_of_week', 'month']]
-    y = city_data['value']
-    
-    return train_test_split(X, y, test_size=0.2, random_state=42)
+    try:
+        response = requests.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        return pd.DataFrame(data.get("results", []))
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to fetch measurements: {str(e)}")
+        return pd.DataFrame()
 
-def train_prediction_model(X_train, y_train):
-    """Train a simple prediction model."""
-    if X_train is None or y_train is None:
+def fetch_measurements_by_coordinates(lat, lon, radius=12000, limit=1000):
+    """
+    Fetch locations within a radius of specified coordinates.
+    
+    Args:
+        lat (float): Latitude
+        lon (float): Longitude
+        radius (int): Radius in meters
+        limit (int): Number of results per page
+    """
+    url = "https://api.openaq.org/v3/locations"
+    params = {
+        "coordinates": f"{lon},{lat}",
+        "radius": radius,
+        "limit": limit
+    }
+    headers = {'X-API-Key': st.secrets["AQ_API"]}
+    
+    try:
+        response = requests.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        return pd.DataFrame(data.get("results", []))
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to fetch locations by coordinates: {str(e)}")
+        return pd.DataFrame()
+
+def fetch_sensor_measurements(sensor_id, limit=1000):
+    """
+    Fetch measurements for a specific sensor.
+    
+    Args:
+        sensor_id (int): Sensor ID
+        limit (int): Number of results per page
+    """
+    url = f"https://api.openaq.org/v3/sensors/{sensor_id}/measurements"
+    params = {"limit": limit}
+    headers = {'X-API-Key': st.secrets["AQ_API"]}
+    
+    try:
+        response = requests.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        return pd.DataFrame(data.get("results", []))
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to fetch sensor measurements: {str(e)}")
+        return pd.DataFrame()
+
+def create_map(df):
+    """Create a Folium map with location markers."""
+    if df.empty:
         return None
     
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-    return model
-
-def generate_future_predictions(model, city, parameter, scaler=None):
-    """Generate predictions for the next 7 days."""
-    if model is None:
-        return pd.DataFrame()
+    # Calculate center of map from data
+    center_lat = df['coordinates.latitude'].mean()
+    center_lon = df['coordinates.longitude'].mean()
     
-    future_dates = pd.date_range(start=datetime.now(), periods=7*24, freq='H')
-    future_data = pd.DataFrame({
-        'date_utc': future_dates,
-        'hour': future_dates.hour,
-        'day_of_week': future_dates.dayofweek,
-        'month': future_dates.month
-    })
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=4)
     
-    X_future = future_data[['hour', 'day_of_week', 'month']]
-    predictions = model.predict(X_future)
-    
-    future_data['predicted_value'] = np.maximum(predictions, 0)  # Ensure no negative predictions
-    future_data['city'] = city
-    future_data['parameter'] = parameter
-    
-    return future_data
-
-def visualize_air_quality(df):
-    """Creates an interactive map displaying air quality data with predictions."""
-    st.title("Global Air Quality Map with Predictions")
-    st.write("Showing air pollution levels and predictions from OpenAQ data")
-    
-    # Sidebar Filters
-    st.sidebar.header("Filters")
-    country_filter = st.sidebar.multiselect("Select Countries", df["country"].unique())
-    parameter_filter = st.sidebar.selectbox("Select Pollutant", df["parameter"].unique())
-    
-    # Filter data
-    filtered_df = df.copy()
-    if country_filter:
-        filtered_df = filtered_df[filtered_df["country"].isin(country_filter)]
-    if parameter_filter:
-        filtered_df = filtered_df[filtered_df["parameter"] == parameter_filter]
-    
-    # Create map
-    m = folium.Map(location=[20, 0], zoom_start=2)
-    
-    # Add markers to map
-    for _, row in filtered_df.iterrows():
-        if pd.notnull(row["latitude"]) and pd.notnull(row["longitude"]):
+    for _, row in df.iterrows():
+        try:
+            lat = row['coordinates.latitude']
+            lon = row['coordinates.longitude']
+            name = row.get('name', 'Unknown Location')
+            value = row.get('value', 'No data')
+            unit = row.get('unit', '')
+            
+            popup_text = f"""
+                <b>{name}</b><br>
+                Value: {value} {unit}<br>
+                Lat: {lat}<br>
+                Lon: {lon}
+            """
+            
             folium.CircleMarker(
-                location=[row["latitude"], row["longitude"]],
-                radius=10,
-                popup=f"{row['city']} ({row['country']})<br>{row['parameter'].upper()}: {row['value']:.1f} {row['unit']}<br>Date: {row['date_utc']}",
+                location=[lat, lon],
+                radius=8,
+                popup=popup_text,
                 color='red',
                 fill=True,
                 fill_color='red'
             ).add_to(m)
+        except (TypeError, ValueError) as e:
+            continue
     
-    folium_static(m)
+    return m
+
+def main():
+    st.set_page_config(page_title="Air Quality Monitor", page_icon="🌍", layout="wide")
+    st.title("Air Quality Monitoring Dashboard")
     
-    # Predictions section
-    st.header("Air Quality Predictions")
-    if not filtered_df.empty:
-        selected_city = st.selectbox("Select City for Predictions", filtered_df["city"].unique())
-        
-        # Prepare and train model
-        X_train, X_test, y_train, y_test = prepare_data_for_prediction(filtered_df, selected_city)
-        model = train_prediction_model(X_train, y_train)
-        
-        if model is not None:
-            predictions_df = generate_future_predictions(model, selected_city, parameter_filter)
-            
-            if not predictions_df.empty:
-                st.subheader(f"Predicted {parameter_filter.upper()} levels for {selected_city}")
-                fig_data = pd.DataFrame({
-                    'Date': predictions_df['date_utc'],
-                    'Predicted Value': predictions_df['predicted_value']
-                }).set_index('Date')
+    # Sidebar for search options
+    st.sidebar.title("Search Options")
+    search_type = st.sidebar.radio(
+        "Search Type",
+        ["Latest PM2.5 Measurements", "Search by Location", "Specific Sensor"]
+    )
+    
+    if search_type == "Latest PM2.5 Measurements":
+        with st.spinner('Fetching latest PM2.5 measurements...'):
+            df = fetch_latest_measurements()
+            if not df.empty:
+                st.success(f"Found {len(df)} locations with PM2.5 measurements")
+                m = create_map(df)
+                if m:
+                    folium_static(m)
                 
-                st.line_chart(fig_data)
-                
-                # Display accuracy metrics if test data is available
-                if X_test is not None and y_test is not None:
-                    test_score = model.score(X_test, y_test)
-                    st.write(f"Model R² Score: {test_score:.2f}")
-        else:
-            st.warning(f"Insufficient data to make predictions for {selected_city}")
+                # Show data table
+                st.subheader("Latest Measurements")
+                st.dataframe(df)
     
-    # Historical trends
-    st.header("Historical Trends")
-    if not filtered_df.empty:
-        filtered_df['date'] = pd.to_datetime(filtered_df['date_utc']).dt.date
-        daily_avg = filtered_df.groupby(['date', 'city'])['value'].mean().reset_index()
+    elif search_type == "Search by Location":
+        col1, col2 = st.sidebar.columns(2)
+        lat = col1.number_input("Latitude", value=35.14942)
+        lon = col2.number_input("Longitude", value=136.90610)
+        radius = st.sidebar.slider("Radius (meters)", 1000, 50000, 12000)
         
-        for city in filtered_df['city'].unique():
-            city_data = daily_avg[daily_avg['city'] == city]
-            if not city_data.empty:
-                st.subheader(f"{city} - Daily Average {parameter_filter.upper()}")
-                city_chart_data = pd.DataFrame({
-                    'Date': city_data['date'],
-                    'Value': city_data['value']
-                }).set_index('Date')
-                st.line_chart(city_chart_data)
+        if st.sidebar.button("Search"):
+            with st.spinner('Searching locations...'):
+                df = fetch_measurements_by_coordinates(lat, lon, radius)
+                if not df.empty:
+                    st.success(f"Found {len(df)} locations within {radius}m radius")
+                    m = create_map(df)
+                    if m:
+                        folium_static(m)
+                    
+                    # Show data table
+                    st.subheader("Location Details")
+                    st.dataframe(df)
+    
+    elif search_type == "Specific Sensor":
+        sensor_id = st.sidebar.number_input("Sensor ID", value=3917, min_value=1)
+        if st.sidebar.button("Fetch Data"):
+            with st.spinner('Fetching sensor measurements...'):
+                df = fetch_sensor_measurements(sensor_id)
+                if not df.empty:
+                    st.success(f"Found {len(df)} measurements for sensor {sensor_id}")
+                    
+                    # Show time series plot
+                    st.subheader("Measurement Time Series")
+                    chart_data = df[['datetime', 'value']].copy()
+                    chart_data['datetime'] = pd.to_datetime(chart_data['datetime'])
+                    chart_data = chart_data.set_index('datetime')
+                    st.line_chart(chart_data)
+                    
+                    # Show data table
+                    st.subheader("Raw Measurements")
+                    st.dataframe(df)
 
 if __name__ == "__main__":
-    st.set_page_config(page_title="Air Quality Predictions", page_icon="🌍", layout="wide")
-    
-    capitals = [
-        "Shenyang"
-    ]
-    
-    # Add a loading spinner while fetching data
-    with st.spinner('Fetching air quality data...'):
-        df = fetch_air_quality_data(capitals)
-    
-    if not df.empty:
-        visualize_air_quality(df)
-    else:
-        st.error("No data available. Please check your API key and internet connection.")
+    main()
