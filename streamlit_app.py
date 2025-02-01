@@ -29,8 +29,8 @@ def fetch_air_quality_data(capitals, parameter="pm25", limit=100, filename="air_
     records = []
     for city in capitals:
         url = f"https://api.openaq.org/v3/measurements?city={city}&parameter={parameter}&limit={limit}&format=json"
-        auth = HTTPBasicAuth("X-API-Key", st.secrets["AQ_API"])
-        response = requests.get(url, auth=auth)
+        headers = {'X-API-Key': st.secrets["AQ_API"]}
+        response = requests.get(url, headers=headers)
         
         if response.status_code == 200:
             data = response.json()
