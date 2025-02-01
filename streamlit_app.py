@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO,
                             logging.StreamHandler()])
 
 class AirQualityPredictor:
-    def __init__(self, filepath='/workspaces/airpolution-app/AirQualityUCI.csv'):
+    def __init__(self, filepath='AirQualityUCI.csv'):
         self.logger = logging.getLogger(__name__)
         self.raw_data = self._load_data(filepath)
         self.processed_data = None
