@@ -107,14 +107,29 @@ class AirQualityPredictor:
     def streamlit_dashboard(self):
         """Create an interactive Streamlit dashboard."""
         st.title('Air Quality Prediction Dashboard')
-        
-        temperature = st.slider('Temperature', min_value=0.0, max_value=50.0, value=25.0)
-        humidity = st.slider('Humidity (%)', min_value=0, max_value=100, value=50)
-        
+
+        # Define all input features used during training
+        feature_names = [col for col in self.processed_data.columns if col != 'CO(GT)']
+
+        # User input sliders
+        input_data = {}
+        for feature in feature_names:
+            if feature in ['Temperature', 'Humidity']:  # Example features
+                input_data[feature] = st.slider(f'{feature}', min_value=0.0, max_value=100.0, value=25.0)
+            else:
+                input_data[feature] = 0  # Default missing features to zero
+
+        # Convert input to DataFrame with the correct feature order
+        input_df = pd.DataFrame([input_data]).reindex(columns=feature_names, fill_value=0)
+
+        # Scale the input data using the same scaler
+        scaled_input = self.scaler.transform(input_df)
+
+        # Prediction
         if st.button('Predict AQI'):
-            scaled_input = self.scaler.transform([[temperature, humidity]])
             prediction = self.model.predict(scaled_input)
             st.write(f'Predicted Air Quality Index: {prediction[0]:.2f}')
+
 
 if __name__ == '__main__':
     predictor = AirQualityPredictor(filepath='AirQualityUCI.csv')
