@@ -198,8 +198,7 @@ if __name__ == "__main__":
     st.set_page_config(page_title="Air Quality Predictions", page_icon="🌍", layout="wide")
     
     capitals = [
-        "Washington, D.C.", "London", "Paris", "Berlin", "Tokyo",
-        "Beijing", "Delhi", "Moscow", "Rome", "Madrid"
+        "Shenyang"
     ]
     
     # Add a loading spinner while fetching data
