@@ -25,7 +25,7 @@ def fetch_air_quality_data(capitals, parameter="pm25", limit=100, filename="air_
     records = []
     for city in capitals:
         # Updated API endpoint for v2
-        url = f"https://api.openaq.org/v2/measurements"
+        url = f"https://api.openaq.org/v3/measurements"
         params = {
             'city': city,
             'parameter': parameter,
