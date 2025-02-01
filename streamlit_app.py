@@ -30,9 +30,6 @@ def fetch_air_quality_data(capitals, parameter="pm25", limit=100, filename="air_
         params = {
             'city': city,
             'parameter': parameter,
-            'limit': limit,
-            'order_by': 'datetime',
-            'sort': 'desc'
         }
         
         try:
