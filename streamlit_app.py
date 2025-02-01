@@ -24,10 +24,19 @@ class AirQualityPredictor:
         
     def _load_data(self, filepath):
         """Load and preprocess the UCI Air Quality dataset"""
+        # Read CSV with proper decimal separator
         df = pd.read_csv(filepath, sep=';', decimal=',', encoding='utf-8')
-        df['DateTime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'])
+        
+        # Convert Date and Time columns to datetime with explicit format
+        df['DateTime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], 
+                                      format='%d/%m/%Y %H.%M.%S')
+        
+        # Drop original Date and Time columns
         df = df.drop(['Date', 'Time'], axis=1)
-        df = df.replace(-200, np.nan)  # Replace error values
+        
+        # Replace error values
+        df = df.replace(-200, np.nan)
+        
         self.logger.info(f"Data loaded: {len(df)} records")
         return df
     
@@ -43,9 +52,13 @@ class AirQualityPredictor:
         self.processed_data = self.processed_data.dropna(thresh=len(self.processed_data)*0.8, axis=1)
         self.processed_data = self.processed_data.dropna()
         
-        # Remove unnamed column if present
-        unnamed_cols = [col for col in self.processed_data.columns if 'Unnamed' in col]
-        self.processed_data = self.processed_data.drop(unnamed_cols, axis=1)
+        # Remove unnamed and non-numeric columns except Hour and Month
+        keep_cols = [col for col in self.processed_data.columns 
+                    if ('Hour' in col or 'Month' in col or 
+                        self.processed_data[col].dtype in ['float64', 'int64']) 
+                    and 'Unnamed' not in col]
+        
+        self.processed_data = self.processed_data[keep_cols]
         
         self.logger.info(f"Preprocessing completed. Records remaining: {len(self.processed_data)}")
         return self.processed_data
@@ -54,8 +67,7 @@ class AirQualityPredictor:
         """Perform exploratory data analysis"""
         self.logger.info("Starting Exploratory Analysis")
         
-        numeric_cols = self.processed_data.select_dtypes(include=[np.number]).columns
-        correlation_matrix = self.processed_data[numeric_cols].corr()
+        correlation_matrix = self.processed_data.corr()
         
         plt.figure(figsize=(12, 8))
         sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f')
@@ -71,8 +83,7 @@ class AirQualityPredictor:
         self.logger.info(f"Starting Model Training for {target}")
         
         features = [col for col in self.processed_data.columns 
-                   if col not in ['DateTime', target] and 
-                   self.processed_data[col].dtype in ['float64', 'int64']]
+                   if col != target]
         
         X = self.processed_data[features]
         y = self.processed_data[target]
