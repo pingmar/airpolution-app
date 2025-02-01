@@ -57,14 +57,24 @@ def fetch_air_quality_data(capitals, parameter="pm25", limit=100, filename="air_
     return df
 
 def visualize_air_quality(df):
-    """Creates an interactive map displaying air quality data."""
+    """Creates an interactive map displaying air quality data with filtering options."""
     st.title("Global Air Quality Map")
     st.write("Showing air pollution levels from OpenAQ API")
+    
+    # Sidebar Filters
+    country_filter = st.sidebar.multiselect("Select Countries", df["country"].unique())
+    parameter_filter = st.sidebar.selectbox("Select Pollutant", df["parameter"].unique())
+    
+    filtered_df = df.copy()
+    if country_filter:
+        filtered_df = filtered_df[filtered_df["country"].isin(country_filter)]
+    if parameter_filter:
+        filtered_df = filtered_df[filtered_df["parameter"] == parameter_filter]
     
     # Initialize map
     m = folium.Map(location=[20, 0], zoom_start=2)
     
-    for _, row in df.iterrows():
+    for _, row in filtered_df.iterrows():
         if pd.notnull(row["latitude"]) and pd.notnull(row["longitude"]):
             folium.Marker(
                 [row["latitude"], row["longitude"]],
@@ -73,6 +83,14 @@ def visualize_air_quality(df):
             ).add_to(m)
     
     folium_static(m)
+    
+    # Time-Series Visualization
+    st.write("### Time-Series Trends")
+    if not filtered_df.empty:
+        time_series_data = filtered_df.groupby("date_utc")["value"].mean().reset_index()
+        st.line_chart(time_series_data.set_index("date_utc"))
+    else:
+        st.write("No data available for selected filters.")
 
 # Streamlit App
 if __name__ == "__main__":
